@@ -61,6 +61,12 @@ func NewProxyAwareHTTPClient(ctx context.Context, cfg *config.Config, auth *clip
 	return httpClient
 }
 
+// NewVisionHTTPClient returns an HTTP client for vision-fallback calls, honoring
+// the global proxy URL. timeout=0 means no timeout.
+func NewVisionHTTPClient(ctx context.Context, proxyURL string, timeout time.Duration) *http.Client {
+	return NewProxyAwareHTTPClient(ctx, &config.Config{SDKConfig: config.SDKConfig{ProxyURL: proxyURL}}, nil, timeout)
+}
+
 // buildProxyTransport creates an HTTP transport configured for the given proxy URL.
 // It supports SOCKS5, HTTP, and HTTPS proxy protocols.
 //

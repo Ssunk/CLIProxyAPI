@@ -18,8 +18,10 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/interfaces"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/logging"
+	"github.com/router-for-me/CLIProxyAPI/v7/internal/runtime/executor/helps"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/thinking"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/util"
+	"github.com/router-for-me/CLIProxyAPI/v7/internal/vision"
 	coreauth "github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/auth"
 	coreexecutor "github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/executor"
 	coreusage "github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/usage"
@@ -1940,16 +1942,56 @@ func (h *BaseAPIHandler) applyRequestInterceptorsBeforeAuth(ctx context.Context,
 }
 
 func (h *BaseAPIHandler) requestAfterAuthInterceptor(capture *requestAfterAuthCapture, skipPluginID string) coreexecutor.RequestAfterAuthInterceptor {
-	if !requestInterceptorsEnabled(h.interceptorHost()) {
+	pluginEnabled := requestInterceptorsEnabled(h.interceptorHost())
+	visionEnabled := h.visionFallbackEnabled()
+	if !pluginEnabled && !visionEnabled {
 		return nil
 	}
 	return func(ctx context.Context, req coreexecutor.RequestAfterAuthInterceptRequest) coreexecutor.RequestAfterAuthInterceptResponse {
-		resp := h.applyRequestInterceptorsAfterAuth(ctx, req, skipPluginID)
+		resp := coreexecutor.RequestAfterAuthInterceptResponse{}
+		if visionEnabled {
+			if newBody := h.applyVisionFallback(ctx, req); len(newBody) > 0 && !bytes.Equal(newBody, req.Body) {
+				resp.Body = newBody
+				req.Body = newBody // plugin interceptors observe the replaced body
+			}
+		}
+		if pluginEnabled {
+			pluginResp := h.applyRequestInterceptorsAfterAuth(ctx, req, skipPluginID)
+			if len(pluginResp.Body) > 0 {
+				resp.Body = pluginResp.Body
+				req.Body = pluginResp.Body
+			}
+			for k, v := range pluginResp.Headers {
+				if resp.Headers == nil {
+					resp.Headers = make(http.Header)
+				}
+				resp.Headers[k] = append([]string(nil), v...)
+			}
+			resp.ClearHeaders = append(resp.ClearHeaders, pluginResp.ClearHeaders...)
+		}
 		if capture != nil {
 			capture.record(req, resp)
 		}
 		return resp
 	}
+}
+
+// visionFallbackEnabled reports whether the vision-fallback config is active.
+func (h *BaseAPIHandler) visionFallbackEnabled() bool {
+	return h != nil && h.Cfg != nil && h.Cfg.VisionFallback.Enabled
+}
+
+// applyVisionFallback rewrites the request body so that image parts are replaced
+// by text descriptions produced by the configured vision model. It returns the
+// original body when fallback is not applicable or the vision call fails.
+func (h *BaseAPIHandler) applyVisionFallback(ctx context.Context, req coreexecutor.RequestAfterAuthInterceptRequest) []byte {
+	cfg := h.Cfg.VisionFallback
+	timeout := time.Duration(cfg.TimeoutSeconds) * time.Second
+	if timeout <= 0 {
+		timeout = 30 * time.Second
+	}
+	client := helps.NewVisionHTTPClient(ctx, h.Cfg.ProxyURL, timeout)
+	return vision.Apply(ctx, req.Body, req.SourceFormat.String(), req.RequestedModel, req.Model, &cfg, client)
 }
 
 func (h *BaseAPIHandler) applyRequestInterceptorsAfterAuth(ctx context.Context, req coreexecutor.RequestAfterAuthInterceptRequest, skipPluginID string) coreexecutor.RequestAfterAuthInterceptResponse {

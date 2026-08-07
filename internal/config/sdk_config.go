@@ -55,6 +55,49 @@ type SDKConfig struct {
 	// NonStreamKeepAliveInterval controls how often blank lines are emitted for non-streaming responses.
 	// <= 0 disables keep-alives. Value is in seconds.
 	NonStreamKeepAliveInterval int `yaml:"nonstream-keepalive-interval,omitempty" json:"nonstream-keepalive-interval,omitempty"`
+
+	// VisionFallback configures automatic image-to-text fallback for blacklisted
+	// non-vision models. When a model listed in Models receives a request
+	// containing images, each image part is replaced by the text description
+	// produced by a vision-capable model before the request is forwarded upstream.
+	// Disabled when absent or enabled=false.
+	VisionFallback VisionFallbackConfig `yaml:"vision-fallback" json:"vision-fallback"`
+}
+
+// VisionFallbackConfig configures automatic image-to-text fallback for models
+// that do not support image input. When a blacklisted model receives a request
+// containing images, each image part is replaced by the text description
+// produced by a vision-capable model before the request is forwarded upstream.
+type VisionFallbackConfig struct {
+	// Enabled toggles vision fallback processing.
+	Enabled bool `yaml:"enabled" json:"enabled"`
+
+	// BaseURL is the base URL of an OpenAI-compatible chat completions endpoint
+	// used to describe images (e.g. "https://api.openai.com/v1").
+	BaseURL string `yaml:"base-url" json:"base-url"`
+
+	// APIKey authenticates requests to the vision endpoint. Plaintext in config,
+	// matching the existing gemini-api-key / claude-api-key convention.
+	APIKey string `yaml:"api-key" json:"api-key"`
+
+	// Model is the vision-capable model name used to describe images.
+	Model string `yaml:"model" json:"model"`
+
+	// Prompt is the instruction sent to the vision model with each image.
+	// Default: "Describe the image content in detail, including any visible text,
+	// objects, and layout. Output only the description."
+	Prompt string `yaml:"prompt,omitempty" json:"prompt,omitempty"`
+
+	// TimeoutSeconds bounds each vision API request. Default 30.
+	TimeoutSeconds int `yaml:"timeout-seconds,omitempty" json:"timeout-seconds,omitempty"`
+
+	// MaxTokens caps the vision model description length. Default 512.
+	MaxTokens int `yaml:"max-tokens,omitempty" json:"max-tokens,omitempty"`
+
+	// Models lists model names that trigger fallback when the request contains
+	// images. Matched case-insensitively against both the client-requested model
+	// and the routed upstream model.
+	Models []string `yaml:"models" json:"models"`
 }
 
 // StreamingConfig holds server streaming behavior configuration.
