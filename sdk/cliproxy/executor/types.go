@@ -67,6 +67,8 @@ type RequestAfterAuthInterceptor func(context.Context, RequestAfterAuthIntercept
 
 // RequestAfterAuthInterceptRequest describes a selected-auth request before executor translation.
 type RequestAfterAuthInterceptRequest struct {
+	// Provider is the provider selected for this execution attempt.
+	Provider string
 	// SourceFormat is the original client protocol format.
 	SourceFormat sdktranslator.Format
 	// ToFormat is the selected upstream protocol format.
@@ -91,6 +93,13 @@ type RequestAfterAuthInterceptResponse struct {
 	Headers http.Header
 	// Body replaces the current request body only when non-empty.
 	Body []byte
+	// OriginalRequest replaces Options.OriginalRequest when non-empty. This is
+	// useful when a caller applies a transient executor-only Body rewrite after
+	// another interceptor has changed the logical original request.
+	OriginalRequest []byte
+	// PreserveOriginalRequest prevents a non-empty Body from implicitly
+	// replacing Options.OriginalRequest.
+	PreserveOriginalRequest bool
 	// ClearHeaders explicitly removes current request headers before Headers is applied.
 	ClearHeaders []string
 	// Terminate prevents the selected executor from receiving the request.

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"bytes"
 	"net/http"
 	"sync"
 	"time"
@@ -318,8 +319,14 @@ func (c *requestAfterAuthCapture) record(req coreexecutor.RequestAfterAuthInterc
 	originalRequestReplaced := false
 	if len(resp.Body) > 0 {
 		body = cloneBytes(resp.Body)
-		originalRequest = cloneBytes(resp.Body)
-		originalRequestReplaced = true
+		switch {
+		case len(resp.OriginalRequest) > 0:
+			originalRequest = cloneBytes(resp.OriginalRequest)
+			originalRequestReplaced = true
+		case !resp.PreserveOriginalRequest:
+			originalRequest = cloneBytes(resp.Body)
+			originalRequestReplaced = true
+		}
 	}
 
 	c.mu.Lock()
@@ -431,12 +438,31 @@ func (h *BaseAPIHandler) applyRequestInterceptorsBeforeAuth(ctx context.Context,
 	return req, opts, nil
 }
 
-func (h *BaseAPIHandler) requestAfterAuthInterceptor(capture *requestAfterAuthCapture, requestID, skipPluginID string) coreexecutor.RequestAfterAuthInterceptor {
-	if !requestInterceptorsEnabled(h.interceptorHost()) {
+func (h *BaseAPIHandler) requestAfterAuthInterceptor(capture *requestAfterAuthCapture, requestID, skipPluginID, visionTargetModel string, execOptions modelExecutionOptions, enableVisionFallback bool) coreexecutor.RequestAfterAuthInterceptor {
+	interceptorsEnabled := requestInterceptorsEnabled(h.interceptorHost())
+	visionEnabled := enableVisionFallback && h.visionFallbackEnabled(execOptions)
+	if !interceptorsEnabled && !visionEnabled {
 		return nil
 	}
 	return func(ctx context.Context, req coreexecutor.RequestAfterAuthInterceptRequest) coreexecutor.RequestAfterAuthInterceptResponse {
-		resp := h.applyRequestInterceptorsAfterAuth(ctx, req, requestID, skipPluginID)
+		resp := coreexecutor.RequestAfterAuthInterceptResponse{}
+		if interceptorsEnabled {
+			resp = h.applyRequestInterceptorsAfterAuth(ctx, req, requestID, skipPluginID)
+		}
+		if visionEnabled && !resp.Terminate {
+			body := req.Body
+			if len(resp.Body) > 0 {
+				body = resp.Body
+			}
+			transformed := h.applyVisionFallback(ctx, req.SourceFormat.String(), visionTargetModel, req.Provider, body, execOptions)
+			if !bytes.Equal(transformed, body) {
+				if len(resp.Body) > 0 {
+					resp.OriginalRequest = cloneBytes(resp.Body)
+				}
+				resp.Body = transformed
+				resp.PreserveOriginalRequest = true
+			}
+		}
 		if capture != nil {
 			capture.record(req, resp)
 		}

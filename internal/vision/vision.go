@@ -7,6 +7,7 @@
 package vision
 
 import (
+	"errors"
 	"sync"
 
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/config"
@@ -14,6 +15,7 @@ import (
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/registry"
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/net/context"
+	"golang.org/x/sync/singleflight"
 )
 
 const (
@@ -49,7 +51,11 @@ type Options struct {
 	Lookup ModelInfoLookup
 }
 
-var cacheCleanupStart sync.Once
+var (
+	cacheCleanupStart   sync.Once
+	describeGroup       singleflight.Group
+	errEmptyDescription = errors.New("empty image description")
+)
 
 // Apply returns the transformed body, or body unchanged when the fallback does
 // not engage. It never fails the request: description errors degrade to an
@@ -95,38 +101,63 @@ func Apply(ctx context.Context, body []byte, opts Options) []byte {
 			failed++
 			return imageUnavailableMarker
 		}
-		key := cacheKey(visionModel, prompt, imageURL)
-		if desc, ok := defaultCache.Get(key); ok {
-			cachedHits++
-			marker := imageMarkerPrefix + desc + imageMarkerSuffix
-			memo[imageURL] = marker
-			return marker
+		key := cacheKey(visionModel, prompt, imageURL, opts.Config.MaxTokens)
+		cacheable := cacheableImage(imageURL)
+		if cacheable {
+			if desc, ok := defaultCache.Get(key); ok {
+				cachedHits++
+				marker := imageMarkerPrefix + desc + imageMarkerSuffix
+				memo[imageURL] = marker
+				return marker
+			}
 		}
-		respBody, errDescribe := opts.Describe(ctx, BuildVisionRequest(visionModel, prompt, imageURL, opts.Config.MaxTokens))
+		value, errDescribe, shared := describeGroup.Do(key, func() (any, error) {
+			if cacheable {
+				if desc, ok := defaultCache.Get(key); ok {
+					return desc, nil
+				}
+			}
+			respBody, errDescribe := opts.Describe(ctx, BuildVisionRequest(visionModel, prompt, imageURL, opts.Config.MaxTokens))
+			if errDescribe != nil {
+				return "", errDescribe
+			}
+			desc := ParseVisionResponse(respBody)
+			if desc == "" {
+				return "", errEmptyDescription
+			}
+			if cacheable {
+				defaultCache.Put(key, desc)
+			}
+			return desc, nil
+		})
 		if errDescribe != nil {
-			log.WithFields(log.Fields{
-				"model":        opts.Model,
-				"vision_model": visionModel,
-				"error":        errDescribe.Error(),
-			}).Warn("vision fallback: image description failed")
+			if errDescribe == errEmptyDescription {
+				log.WithFields(log.Fields{
+					"model":        opts.Model,
+					"vision_model": visionModel,
+				}).Warn("vision fallback: empty image description")
+			} else {
+				log.WithFields(log.Fields{
+					"model":        opts.Model,
+					"vision_model": visionModel,
+					"error":        errDescribe.Error(),
+				}).Warn("vision fallback: image description failed")
+			}
 			failed++
-			// Memoize within the request so a broken image is attempted once,
-			// but never cache failures across requests.
 			memo[imageURL] = imageUnavailableMarker
 			return imageUnavailableMarker
 		}
-		desc := ParseVisionResponse(respBody)
+		desc, _ := value.(string)
 		if desc == "" {
-			log.WithFields(log.Fields{
-				"model":        opts.Model,
-				"vision_model": visionModel,
-			}).Warn("vision fallback: empty image description")
 			failed++
 			memo[imageURL] = imageUnavailableMarker
 			return imageUnavailableMarker
 		}
-		defaultCache.Put(key, desc)
-		described++
+		if shared {
+			cachedHits++
+		} else {
+			described++
+		}
 		marker := imageMarkerPrefix + desc + imageMarkerSuffix
 		memo[imageURL] = marker
 		return marker

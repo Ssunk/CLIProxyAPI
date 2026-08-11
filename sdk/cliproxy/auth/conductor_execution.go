@@ -184,6 +184,7 @@ func applyRequestAfterAuthInterceptor(ctx context.Context, executor ProviderExec
 	}
 	toFormat := requestToFormat(provider, executor, req, opts)
 	resp := opts.RequestAfterAuthInterceptor(ctx, cliproxyexecutor.RequestAfterAuthInterceptRequest{
+		Provider:       provider,
 		SourceFormat:   opts.SourceFormat,
 		ToFormat:       toFormat,
 		Model:          req.Model,
@@ -196,7 +197,12 @@ func applyRequestAfterAuthInterceptor(ctx context.Context, executor ProviderExec
 	opts.Headers = mergeRequestHeaders(opts.Headers, resp.Headers, resp.ClearHeaders)
 	if len(resp.Body) > 0 {
 		req.Payload = bytes.Clone(resp.Body)
-		opts.OriginalRequest = bytes.Clone(resp.Body)
+		switch {
+		case len(resp.OriginalRequest) > 0:
+			opts.OriginalRequest = bytes.Clone(resp.OriginalRequest)
+		case !resp.PreserveOriginalRequest:
+			opts.OriginalRequest = bytes.Clone(resp.Body)
+		}
 	}
 	if resp.Terminate {
 		return req, opts, &cliproxyexecutor.RequestTerminatedError{

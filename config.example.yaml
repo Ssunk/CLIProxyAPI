@@ -189,8 +189,9 @@ disable-image-generation: false
 # input-modalities: ["text"]), or when it matches a wildcard in `models` below.
 # Models with unknown or image-capable modalities are never modified, and
 # requests already targeting the vision model are left untouched. Descriptions
-# are cached for 3 hours, so images resent across conversation turns are only
-# described once.
+# for inline/base64 images are cached for 3 hours, so the same embedded image
+# resent across conversation turns is only described once. Mutable remote URLs
+# are deduplicated only while concurrent requests are in flight.
 # vision-fallback:
 #   enabled: false
 #   model: ""              # vision-capable model routable by this proxy (any provider), e.g. "minimax-m3"

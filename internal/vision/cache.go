@@ -3,6 +3,8 @@ package vision
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -18,9 +20,9 @@ type cacheEntry struct {
 	timestamp   time.Time
 }
 
-// descriptionCache stores image descriptions keyed by vision model, prompt,
-// and image payload so images resent across conversation turns are only
-// described once. Entries use a sliding TTL.
+// descriptionCache stores descriptions for content-addressed inline images so
+// images resent across conversation turns are only described once. Entries use
+// a sliding TTL.
 type descriptionCache struct {
 	mu      sync.Mutex
 	entries map[string]cacheEntry
@@ -36,11 +38,18 @@ func newDescriptionCache() *descriptionCache {
 	}
 }
 
-// cacheKey hashes the inputs so full base64 image payloads never stay in
-// memory; only the resulting description is stored.
-func cacheKey(visionModel, prompt, imageURL string) string {
-	sum := sha256.Sum256([]byte(visionModel + "\x1f" + prompt + "\x1f" + imageURL))
+// cacheKey hashes all inputs that can change the generated description so
+// full base64 image payloads never stay in memory.
+func cacheKey(visionModel, prompt, imageURL string, maxTokens int) string {
+	sum := sha256.Sum256([]byte(visionModel + "\x1f" + prompt + "\x1f" + strconv.Itoa(maxTokens) + "\x1f" + imageURL))
 	return hex.EncodeToString(sum[:])
+}
+
+// cacheableImage reports whether the image reference identifies its content.
+// Remote URLs can change while retaining the same string, so they are shared
+// only across concurrent calls and are not persisted in the description cache.
+func cacheableImage(imageURL string) bool {
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(imageURL)), "data:")
 }
 
 // Get returns the cached description and refreshes its timestamp (sliding TTL).

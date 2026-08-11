@@ -9,22 +9,36 @@ import (
 	"golang.org/x/net/context"
 )
 
+type contextWithoutValues struct {
+	context.Context
+}
+
+func (contextWithoutValues) Value(any) any {
+	return nil
+}
+
+func isolatedExecutionContext(ctx context.Context) context.Context {
+	if ctx == nil {
+		return context.Background()
+	}
+	return contextWithoutValues{Context: ctx}
+}
+
+func (h *BaseAPIHandler) visionFallbackEnabled(execOptions modelExecutionOptions) bool {
+	return h != nil && h.Cfg != nil && h.Cfg.VisionFallback.Enabled && h.Cfg.VisionFallback.Model != "" && !execOptions.InternalSource
+}
+
 // applyVisionFallback replaces image blocks with text descriptions when the
 // requested model does not accept image input. It returns rawJSON unchanged
 // whenever the feature does not engage. The result is used only as the
 // executor payload; opts.OriginalRequest keeps the untouched request so
 // session identity, affinity, and replay caches stay stable.
-func (h *BaseAPIHandler) applyVisionFallback(ctx context.Context, entryProtocol, normalizedModel string, providers []string, rawJSON []byte, execOptions modelExecutionOptions) []byte {
+func (h *BaseAPIHandler) applyVisionFallback(ctx context.Context, entryProtocol, normalizedModel, provider string, rawJSON []byte, execOptions modelExecutionOptions) []byte {
 	if h == nil || h.Cfg == nil || len(rawJSON) == 0 {
 		return rawJSON
 	}
 	cfg := h.Cfg.VisionFallback
-	if !cfg.Enabled || cfg.Model == "" {
-		return rawJSON
-	}
-	// Internal model executions (including our own describe calls and plugin
-	// host callbacks) are never transformed; this also hard-stops recursion.
-	if execOptions.InternalSource {
+	if !h.visionFallbackEnabled(execOptions) {
 		return rawJSON
 	}
 	switch entryProtocol {
@@ -33,7 +47,7 @@ func (h *BaseAPIHandler) applyVisionFallback(ctx context.Context, entryProtocol,
 		return rawJSON
 	}
 	describe := func(describeCtx context.Context, body []byte) ([]byte, error) {
-		resp, errMsg := h.ExecuteModel(describeCtx, ModelExecutionRequest{
+		resp, errMsg := h.ExecuteModel(isolatedExecutionContext(describeCtx), ModelExecutionRequest{
 			EntryProtocol: constant.OpenAI,
 			Model:         cfg.Model,
 			Stream:        false,
@@ -53,7 +67,7 @@ func (h *BaseAPIHandler) applyVisionFallback(ctx context.Context, entryProtocol,
 	return vision.Apply(ctx, rawJSON, vision.Options{
 		Format:    entryProtocol,
 		Model:     normalizedModel,
-		Providers: providers,
+		Providers: []string{provider},
 		Config:    cfg,
 		Describe:  describe,
 	})

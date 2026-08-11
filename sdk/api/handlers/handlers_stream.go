@@ -58,6 +58,7 @@ func (h *BaseAPIHandler) streamWithPluginExecutor(ctx context.Context, entryProt
 		close(errChan)
 		return nil, nil, errChan
 	}
+	req.Payload = h.applyVisionFallback(ctx, entryProtocol, req.Model, "", req.Payload, execOptions)
 	streamResult, errStream := host.ExecutePluginExecutorStream(ctx, executorPluginID, req, opts)
 	if errStream != nil {
 		errMsg := executionErrorMessage(errStream)
@@ -256,7 +257,7 @@ func (h *BaseAPIHandler) executeStreamWithAuthManagerFormats(ctx context.Context
 	setReasoningEffortMetadata(reqMeta, entryProtocol, normalizedModel, rawJSON)
 	setServiceTierMetadata(reqMeta, rawJSON)
 	setGenerateMetadata(reqMeta, rawJSON)
-	payload := h.applyVisionFallback(ctx, entryProtocol, normalizedModel, providers, rawJSON, execOptions)
+	payload := rawJSON
 	if len(payload) == 0 {
 		payload = nil
 	}
@@ -274,7 +275,7 @@ func (h *BaseAPIHandler) executeStreamWithAuthManagerFormats(ctx context.Context
 		ResponseFormat:              sdktranslator.FromString(responseProtocol),
 		Headers:                     modelExecutionHeaders(ctx, execOptions.Headers),
 		Query:                       modelExecutionQuery(ctx, execOptions.Query),
-		RequestAfterAuthInterceptor: h.requestAfterAuthInterceptor(afterAuthCapture, lifecycle.requestID(), execOptions.SkipInterceptorPluginID),
+		RequestAfterAuthInterceptor: h.requestAfterAuthInterceptor(afterAuthCapture, lifecycle.requestID(), execOptions.SkipInterceptorPluginID, normalizedModel, execOptions, true),
 	}
 	opts.Metadata = reqMeta
 	var interceptErr *interfaces.ErrorMessage
