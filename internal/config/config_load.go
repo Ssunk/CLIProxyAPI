@@ -183,6 +183,9 @@ func LoadConfigOptional(configFile string, optional bool) (*Config, error) {
 	// Validate raw payload rules and drop invalid entries.
 	cfg.SanitizePayloadRules()
 
+	// Normalize the vision fallback configuration.
+	cfg.SanitizeVisionFallback()
+
 	// Return the populated configuration struct.
 	return &cfg, nil
 }

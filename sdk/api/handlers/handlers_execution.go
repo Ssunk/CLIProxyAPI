@@ -61,7 +61,7 @@ func (h *BaseAPIHandler) executeWithAuthManagerFormats(ctx context.Context, entr
 	setReasoningEffortMetadata(reqMeta, entryProtocol, normalizedModel, rawJSON)
 	setServiceTierMetadata(reqMeta, rawJSON)
 	setGenerateMetadata(reqMeta, rawJSON)
-	payload := rawJSON
+	payload := h.applyVisionFallback(ctx, entryProtocol, normalizedModel, providers, rawJSON, execOptions)
 	if len(payload) == 0 {
 		payload = nil
 	}

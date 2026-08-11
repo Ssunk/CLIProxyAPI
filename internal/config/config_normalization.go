@@ -101,6 +101,20 @@ func (cfg *Config) SanitizeOAuthModelAlias() {
 	cfg.OAuthModelAlias = out
 }
 
+// SanitizeVisionFallback normalizes the vision fallback configuration.
+// Wildcard patterns share the excluded-models normalization (trim, lowercase, dedupe).
+func (cfg *Config) SanitizeVisionFallback() {
+	if cfg == nil {
+		return
+	}
+	cfg.VisionFallback.Model = strings.TrimSpace(cfg.VisionFallback.Model)
+	cfg.VisionFallback.Prompt = strings.TrimSpace(cfg.VisionFallback.Prompt)
+	cfg.VisionFallback.Models = NormalizeExcludedModels(cfg.VisionFallback.Models)
+	if cfg.VisionFallback.MaxTokens < 0 {
+		cfg.VisionFallback.MaxTokens = 0
+	}
+}
+
 // SanitizeOpenAICompatibility removes OpenAI-compatibility provider entries that are
 // not actionable, specifically those missing a BaseURL. It trims whitespace before
 // evaluation and preserves the relative order of remaining entries.

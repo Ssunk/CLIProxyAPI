@@ -58,6 +58,10 @@ type SDKConfig struct {
 	// Streaming configures server-side streaming behavior (keep-alives and safe bootstrap retries).
 	Streaming StreamingConfig `yaml:"streaming" json:"streaming"`
 
+	// VisionFallback configures automatic image-to-text conversion for models
+	// that do not accept image input.
+	VisionFallback VisionFallbackConfig `yaml:"vision-fallback" json:"vision-fallback"`
+
 	// NonStreamKeepAliveInterval controls how often blank lines are emitted for non-streaming responses.
 	// <= 0 disables keep-alives. Value is in seconds.
 	NonStreamKeepAliveInterval int `yaml:"nonstream-keepalive-interval,omitempty" json:"nonstream-keepalive-interval,omitempty"`
@@ -79,4 +83,29 @@ type StreamingConfig struct {
 	// to allow auth rotation / transient recovery.
 	// <= 0 disables bootstrap retries. Default is 0.
 	BootstrapRetries int `yaml:"bootstrap-retries,omitempty" json:"bootstrap-retries,omitempty"`
+}
+
+// VisionFallbackConfig configures the vision-fallback feature: requests that
+// contain images but target a model without image input support have each
+// image block replaced in-place by a text description produced by Model.
+type VisionFallbackConfig struct {
+	// Enabled toggles the feature globally.
+	Enabled bool `yaml:"enabled" json:"enabled"`
+
+	// Model is the vision-capable model used to describe images. It must be a
+	// model this proxy can route (any provider). Empty disables the feature.
+	Model string `yaml:"model" json:"model"`
+
+	// Prompt overrides the built-in description prompt when non-empty.
+	Prompt string `yaml:"prompt,omitempty" json:"prompt,omitempty"`
+
+	// Models lists case-insensitive wildcard patterns ('*' matches any
+	// substring) of model IDs that always use the fallback. It supplements
+	// registry input-modality detection for models that cannot declare
+	// modalities (e.g. OAuth catalog models). A match forces the fallback
+	// even when the registry reports image support.
+	Models []string `yaml:"models,omitempty" json:"models,omitempty"`
+
+	// MaxTokens caps max_tokens of the internal vision call when > 0.
+	MaxTokens int `yaml:"max-tokens,omitempty" json:"max-tokens,omitempty"`
 }

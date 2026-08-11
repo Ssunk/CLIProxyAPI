@@ -57,6 +57,21 @@ func BuildConfigChangeDetails(oldCfg, newCfg *config.Config) []string {
 	if oldCfg.ClaudeCode.DisableCloakingModelList != newCfg.ClaudeCode.DisableCloakingModelList {
 		changes = append(changes, fmt.Sprintf("claude-code.disable-cloaking-model-list: %t -> %t", oldCfg.ClaudeCode.DisableCloakingModelList, newCfg.ClaudeCode.DisableCloakingModelList))
 	}
+	if oldCfg.VisionFallback.Enabled != newCfg.VisionFallback.Enabled {
+		changes = append(changes, fmt.Sprintf("vision-fallback.enabled: %t -> %t", oldCfg.VisionFallback.Enabled, newCfg.VisionFallback.Enabled))
+	}
+	if oldCfg.VisionFallback.Model != newCfg.VisionFallback.Model {
+		changes = append(changes, fmt.Sprintf("vision-fallback.model: %s -> %s", oldCfg.VisionFallback.Model, newCfg.VisionFallback.Model))
+	}
+	if oldCfg.VisionFallback.Prompt != newCfg.VisionFallback.Prompt {
+		changes = append(changes, fmt.Sprintf("vision-fallback.prompt: %d -> %d chars", len(oldCfg.VisionFallback.Prompt), len(newCfg.VisionFallback.Prompt)))
+	}
+	if !reflect.DeepEqual(oldCfg.VisionFallback.Models, newCfg.VisionFallback.Models) {
+		changes = append(changes, fmt.Sprintf("vision-fallback.models: %d -> %d entries", len(oldCfg.VisionFallback.Models), len(newCfg.VisionFallback.Models)))
+	}
+	if oldCfg.VisionFallback.MaxTokens != newCfg.VisionFallback.MaxTokens {
+		changes = append(changes, fmt.Sprintf("vision-fallback.max-tokens: %d -> %d", oldCfg.VisionFallback.MaxTokens, newCfg.VisionFallback.MaxTokens))
+	}
 	if oldCfg.DisableImageGeneration != newCfg.DisableImageGeneration {
 		changes = append(changes, fmt.Sprintf("disable-image-generation: %v -> %v", oldCfg.DisableImageGeneration, newCfg.DisableImageGeneration))
 	}
